@@ -3,8 +3,10 @@
 console.log("ContextMemo content script loaded:", location.href);
 
 (function () {
+  // -----------------------------------------------------
+  // UTILITIES
+  // -----------------------------------------------------
 
-  // ---------- UTIL ----------
   function uid() {
     return "n_" + Math.random().toString(36).slice(2);
   }
@@ -13,13 +15,17 @@ console.log("ContextMemo content script loaded:", location.href);
     return location.href;
   }
 
-  // ---------- STORAGE ----------
+  // -----------------------------------------------------
+  // STORAGE
+  // -----------------------------------------------------
+
   const Storage = {
     async getAll() {
       return new Promise((res) =>
         chrome.storage.local.get({ notes: [] }, (d) => res(d.notes || []))
       );
     },
+
     async save(note) {
       const all = await this.getAll();
       all.push(note);
@@ -27,13 +33,17 @@ console.log("ContextMemo content script loaded:", location.href);
         chrome.storage.local.set({ notes: all }, () => res(true))
       );
     },
+
     async notesFor(url) {
       const all = await this.getAll();
       return all.filter((n) => n.url === url);
-    }
+    },
   };
 
-  // ---------- SHADOW UI ----------
+  // -----------------------------------------------------
+  // SHADOW POPUP UI (isolated from site CSS)
+  // -----------------------------------------------------
+
   const host = document.createElement("div");
   host.style.all = "initial";
   document.documentElement.appendChild(host);
@@ -64,8 +74,14 @@ console.log("ContextMemo content script loaded:", location.href);
         justify-content:flex-end;
         gap:6px;
       }
-      .save { background:#2563eb; color:white; border:none; padding:6px 10px; border-radius:6px; }
-      .cancel { background:#eee; border:none; padding:6px 10px; border-radius:6px; }
+      .save {
+        background:#2563eb; color:white;
+        border:none; padding:6px 10px; border-radius:6px;
+      }
+      .cancel {
+        background:#eee; border:none;
+        padding:6px 10px; border-radius:6px;
+      }
     </style>
 
     <div id="box" class="box" style="display:none">
@@ -81,6 +97,37 @@ console.log("ContextMemo content script loaded:", location.href);
   const ui = root.querySelector("#box");
   const textarea = root.querySelector("#note");
 
+  // -----------------------------------------------------
+  // POPUP POSITION FIX
+  // -----------------------------------------------------
+
+  function getSafePopupPosition() {
+    const sel = window.getSelection();
+
+    // fallback center
+    let x = window.scrollX + window.innerWidth / 2;
+    let y = window.scrollY + window.innerHeight / 2;
+
+    if (!sel || sel.rangeCount === 0) return { x, y };
+
+    const range = sel.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+
+    if (rect.width === 0 && rect.height === 0) return { x, y };
+
+    x = Math.min(
+      window.scrollX + rect.left,
+      window.scrollX + window.innerWidth - 300 // keep popup inside screen
+    );
+    y = window.scrollY + rect.bottom + 10;
+
+    return { x, y };
+  }
+
+  // -----------------------------------------------------
+  // OPEN/CLOSE NOTE UI
+  // -----------------------------------------------------
+
   function showUI(x, y, snippet) {
     ui.style.left = x + "px";
     ui.style.top = y + "px";
@@ -95,52 +142,47 @@ console.log("ContextMemo content script loaded:", location.href);
     delete ui.dataset.snippet;
   }
 
-  // ---------- HIGHLIGHT ENGINE ----------
+  // -----------------------------------------------------
+  // HIGHLIGHT ENGINE — stable exact text mapping
+  // -----------------------------------------------------
+
   function highlightSnippet(snippet, id) {
     if (!snippet) return false;
 
     const rawSnippet = snippet.trim();
 
-    // Collect text nodes with ORIGINAL spacing (no normalization)
-    let textIndex = 0;
+    // collect all text nodes + their positions
+    let pos = 0;
     const textNodes = [];
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
 
     let node;
     while ((node = walker.nextNode())) {
       const text = node.nodeValue;
-      textNodes.push({
-        node,
-        start: textIndex,
-        end: textIndex + text.length
-      });
-      textIndex += text.length;
+      textNodes.push({ node, start: pos, end: pos + text.length });
+      pos += text.length;
     }
 
-    // Find snippet in the FULL TEXT
     const fullText = textNodes.map((t) => t.node.nodeValue).join("");
-    const matchIndex = fullText.indexOf(rawSnippet);
+    const startIdx = fullText.indexOf(rawSnippet);
 
-    if (matchIndex === -1) {
-      console.warn("Snippet not found:", rawSnippet);
-      return false;
-    }
+    if (startIdx === -1) return false;
 
-    const matchEnd = matchIndex + rawSnippet.length;
+    const endIdx = startIdx + rawSnippet.length;
 
-    // Map index → node + offset
+    // map indices → DOM nodes
     let startNode, startOffset, endNode, endOffset;
 
     for (const t of textNodes) {
-      if (!startNode && matchIndex >= t.start && matchIndex < t.end) {
+      if (!startNode && startIdx >= t.start && startIdx < t.end) {
         startNode = t.node;
-        startOffset = matchIndex - t.start;
+        startOffset = startIdx - t.start;
       }
-      if (!endNode && matchEnd > t.start && matchEnd <= t.end) {
+      if (!endNode && endIdx > t.start && endIdx <= t.end) {
         endNode = t.node;
-        endOffset = matchEnd - t.start;
-        break;
+        endOffset = endIdx - t.start;
       }
+      if (startNode && endNode) break;
     }
 
     if (!startNode || !endNode) return false;
@@ -149,26 +191,21 @@ console.log("ContextMemo content script loaded:", location.href);
     range.setStart(startNode, startOffset);
     range.setEnd(endNode, endOffset);
 
-    // Wrapper with INLINE styles (UNSTOPPABLE)
     const span = document.createElement("span");
     span.setAttribute("data-note-id", id);
-
     span.style.backgroundColor = "#fff59d";
     span.style.textDecoration = "underline";
-    span.style.borderRadius = "2px";
     span.style.padding = "1px 0";
-    span.style.display = "inline";
-    span.style.position = "relative";
-    span.style.zIndex = "2147480000";
+    span.style.borderRadius = "2px";
 
     const dot = document.createElement("span");
+    dot.className = "contextmemo-dot";
     dot.style.width = "8px";
     dot.style.height = "8px";
     dot.style.background = "#f59e0b";
     dot.style.display = "inline-block";
     dot.style.borderRadius = "50%";
     dot.style.marginLeft = "4px";
-    dot.style.verticalAlign = "middle";
 
     try {
       const contents = range.extractContents();
@@ -177,48 +214,85 @@ console.log("ContextMemo content script loaded:", location.href);
       range.insertNode(span);
       return true;
     } catch (e) {
-      console.warn("Highlight failed:", e);
       return false;
     }
   }
 
-  // ---------- REHYDRATE ----------
+  // -----------------------------------------------------
+  // REHYDRATE HIGHLIGHTS ON PAGE LOAD
+  // -----------------------------------------------------
+
   async function rehydrate() {
     const list = await Storage.notesFor(currentUrl());
-    list.forEach((n) => highlightSnippet(n.snippet, n.id));
+    list.forEach((n) => {
+      if (!document.querySelector(`[data-note-id="${n.id}"]`)) {
+        highlightSnippet(n.snippet, n.id);
+      }
+    });
   }
 
   rehydrate();
   setTimeout(rehydrate, 300);
 
-  // ---------- MESSAGE LISTENER ----------
+  // -----------------------------------------------------
+  // MESSAGE HANDLER
+  // -----------------------------------------------------
+
   chrome.runtime.onMessage.addListener((msg) => {
+    // OPEN NOTE UI
     if (msg.type === "OPEN_NOTE_UI") {
       const snippet = msg.snippet?.trim();
       if (!snippet) return alert("Select some text first.");
 
-      const sel = window.getSelection();
-      let x = window.innerWidth / 2;
-      let y = window.innerHeight / 2;
+      const pos = getSafePopupPosition();
+      showUI(pos.x, pos.y, snippet);
+    }
 
-      if (sel.rangeCount > 0) {
-        const rect = sel.getRangeAt(0).getBoundingClientRect();
-        x = rect.left + window.scrollX;
-        y = rect.bottom + window.scrollY + 10;
-      }
+    // DELETE NOTE — FIXED: remove dot + highlight instantly
+    if (msg.type === "DELETE_NOTE") {
+      const els = document.querySelectorAll(`[data-note-id="${msg.id}"]`);
 
-      showUI(x, y, snippet);
+      els.forEach((el) => {
+        const parent = el.parentNode;
+
+        // extract ONLY the text (skip the dot)
+        [...el.childNodes].forEach((child) => {
+          if (child.className === "contextmemo-dot") return; // skip dot
+          parent.insertBefore(child, el);
+        });
+
+        parent.removeChild(el);
+      });
+    }
+
+    // SCROLL + FLASH highlight
+    if (msg.type === "OPEN_NOTE_VIEWER") {
+      const el = document.querySelector(`[data-note-id="${msg.id}"]`);
+      if (!el) return;
+
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+
+      const prev = el.style.backgroundColor;
+      el.style.transition = "background-color 0.3s ease";
+      el.style.backgroundColor = "#ffeb3b";
+
+      setTimeout(() => {
+        el.style.backgroundColor = prev;
+      }, 600);
     }
   });
 
-  // ---------- SAVE ----------
+  // -----------------------------------------------------
+  // SAVE NOTE
+  // -----------------------------------------------------
+
   root.querySelector(".save").addEventListener("click", async () => {
     const snippet = ui.dataset.snippet;
     const content = textarea.value.trim();
 
     const id = uid();
-    const ok = highlightSnippet(snippet, id);
 
+    const ok = highlightSnippet(snippet, id);
     if (!ok) {
       alert("Could not highlight this snippet.");
       hideUI();
@@ -230,12 +304,11 @@ console.log("ContextMemo content script loaded:", location.href);
       url: currentUrl(),
       snippet,
       content,
-      createdAt: Date.now()
+      createdAt: Date.now(),
     });
 
     hideUI();
   });
 
   root.querySelector(".cancel").addEventListener("click", hideUI);
-
 })();

@@ -2,15 +2,18 @@
   "manifest_version": 3,
   "name": "ContextMemo",
   "version": "1.0.0",
-  "description": "Persistent web highlighter and notes",
+  "description": "Highlight text on any webpage and attach persistent notes.",
+
   "permissions": [
     "storage",
     "contextMenus",
-    "scripting",
-    "activeTab",
-    "tabs"
+    "tabs",
+    "activeTab"
   ],
-  "host_permissions": ["<all_urls>"],
+
+  "host_permissions": [
+    "<all_urls>"
+  ],
 
   "background": {
     "service_worker": "background.js"
