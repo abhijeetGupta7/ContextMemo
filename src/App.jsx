@@ -33,7 +33,7 @@ export default function App() {
     fetchCurrentTabUrl();
     loadNotes();
 
-    // Listen for storage changes to keep popup in sync if background/content updates storage
+    // real-time sync across tabs
     const onChanged = (changes, area) => {
       if (area === "local" && changes.notes) {
         setNotes(changes.notes.newValue || []);
@@ -41,9 +41,7 @@ export default function App() {
     };
     try {
       chrome.storage.onChanged.addListener(onChanged);
-    } catch (e) {
-      // some environments may not support it in preview, ignore silently
-    }
+    } catch (e) {}
 
     return () => {
       try {
@@ -52,11 +50,24 @@ export default function App() {
     };
   }, []);
 
-  // derived lists
+  // --- DERIVED LISTS ---
+
+  // Notes only for current page
   const notesForPage = useMemo(
     () => notes.filter((n) => n.url === currentUrl),
     [notes, currentUrl]
   );
+
+  // SEARCH applied inside "This Page"
+  const filteredPage = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return notesForPage;
+    return notesForPage.filter((n) =>
+      (n.content + " " + n.snippet).toLowerCase().includes(q)
+    );
+  }, [notesForPage, filter]);
+
+  // SEARCH applied to all notes (global)
   const filteredGlobal = useMemo(() => {
     const q = filter.trim().toLowerCase();
     if (!q) return notes;
@@ -67,28 +78,17 @@ export default function App() {
 
   // delete note: remove from chrome.storage and notify content script to remove highlight
   async function deleteNote(noteId) {
-    // optimistic UI: remove locally first
-    setNotes((prev) => prev.filter((n) => n.id !== noteId));
+    setNotes((prev) => prev.filter((n) => n.id !== noteId)); // optimistic UI
 
-    // update storage
     chrome.storage.local.get({ notes: [] }, (res) => {
       const remaining = (res.notes || []).filter((n) => n.id !== noteId);
       chrome.storage.local.set({ notes: remaining }, () => {
-        // Notify current active tab to remove highlight
         chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
           if (!tabs || tabs.length === 0) return;
           const tabId = tabs[0].id;
-          chrome.tabs.sendMessage(
-            tabId,
-            { type: "DELETE_NOTE", id: noteId },
-            (resp) => {
-              // ignore errors silently (no receiver etc.)
-              if (chrome.runtime.lastError) {
-                // Might be because content script not injected on that tab — ignore.
-                // You may choose to inject content script here with scripting.executeScript if desired.
-              }
-            }
-          );
+          chrome.tabs.sendMessage(tabId, { type: "DELETE_NOTE", id: noteId }, () => {
+            if (chrome.runtime.lastError) {}
+          });
         });
       });
     });
@@ -97,8 +97,7 @@ export default function App() {
   function normalizeForCompare(u) {
     try {
       const url = new URL(u);
-      // compare origin + pathname (ignore query + hash)
-      return url.origin + url.pathname.replace(/\/$/, ""); // remove trailing slash
+      return url.origin + url.pathname.replace(/\/$/, "");
     } catch (e) {
       return u;
     }
@@ -111,7 +110,7 @@ export default function App() {
       const activeNormalized = normalizeForCompare(activeTab.url || "");
       const noteNormalized = normalizeForCompare(note.url || "");
 
-      // same logical page
+      // same page
       if (activeNormalized === noteNormalized) {
         chrome.tabs.sendMessage(activeTab.id, {
           type: "OPEN_NOTE_VIEWER",
@@ -120,7 +119,7 @@ export default function App() {
         return;
       }
 
-      // open new tab — then wait for load complete
+      // open tab → wait → jump to highlight
       chrome.tabs.create({ url: note.url }, (newTab) => {
         if (!newTab || !newTab.id) return;
         const tabId = newTab.id;
@@ -134,8 +133,10 @@ export default function App() {
             });
           }
         };
-        // safety fallback: remove listener after 20s to avoid leaks
+
         chrome.tabs.onUpdated.addListener(listener);
+
+        // safety timeout
         setTimeout(() => {
           try {
             chrome.tabs.onUpdated.removeListener(listener);
@@ -182,12 +183,13 @@ export default function App() {
           <div className="text-center text-gray-500 py-6">Loading...</div>
         )}
 
+        {/* -------- THIS PAGE MODE -------- */}
         {!loading && mode === "page" && (
           <div>
-            {notesForPage.length === 0 && (
+            {filteredPage.length === 0 && (
               <div className="text-gray-500">No notes for this page.</div>
             )}
-            {notesForPage.map((note) => (
+            {filteredPage.map((note) => (
               <div key={note.id} className="border rounded p-2 mb-2">
                 <div className="text-xs text-gray-600 mb-1">{note.snippet}</div>
                 <div className="text-sm mb-2">
@@ -219,6 +221,7 @@ export default function App() {
           </div>
         )}
 
+        {/* -------- ALL NOTES MODE -------- */}
         {!loading && mode === "all" && (
           <div>
             {filteredGlobal.length === 0 && (
@@ -231,6 +234,7 @@ export default function App() {
                 </div>
                 <div className="text-xs text-gray-600 mb-1">{note.snippet}</div>
                 <div className="text-sm mb-2">{note.content}</div>
+
                 <div className="flex justify-between items-center">
                   <div className="text-xs text-gray-400">
                     {new Date(note.createdAt).toLocaleString()}
