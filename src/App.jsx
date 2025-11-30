@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useMemo } from "react";
 
+// POP UP
 export default function App() {
-  const [notes, setNotes] = useState([]);
-  const [currentNormalizedUrl, setCurrentNormalizedUrl] = useState("");
+  const [notes, setNotes] = useState([]); // all notes
+  const [currentUrl, setCurrentUrl] = useState("");
   const [filter, setFilter] = useState("");
   const [mode, setMode] = useState("page"); // 'page' or 'all'
   const [loading, setLoading] = useState(true);
@@ -37,10 +38,9 @@ export default function App() {
 
   function fetchCurrentTabUrl() {
     chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
-      if (!tabs || tabs.length === 0) return;
-      const rawUrl = tabs[0].url || "";
+      if (!tabs || tabs.length === 0) return setCurrentUrl("");
       // Store the NORMALIZED version for filtering
-      setCurrentNormalizedUrl(getCanonicalUrl(rawUrl));
+      setCurrentUrl(getCanonicalUrl(tabs[0].url || ""));
     });
   }
 
@@ -73,14 +73,16 @@ export default function App() {
 
   // --- 3. FILTERING LOGIC ---
 
+  // Filter notes for "This Page" using normalized URLs
   const notesForPage = useMemo(
     () => notes.filter((n) => {
         const noteNorm = n.normalizedUrl || getCanonicalUrl(n.url);
-        return noteNorm === currentNormalizedUrl;
+        return noteNorm === currentUrl;
     }),
-    [notes, currentNormalizedUrl]
+    [notes, currentUrl]
   );
 
+  // SEARCH applied inside "This Page"
   const filteredPage = useMemo(() => {
     const q = filter.trim().toLowerCase();
     if (!q) return notesForPage;
@@ -89,6 +91,7 @@ export default function App() {
     );
   }, [notesForPage, filter]);
 
+  // SEARCH applied to all notes (global)
   const filteredGlobal = useMemo(() => {
     const q = filter.trim().toLowerCase();
     if (!q) return notes;
@@ -117,6 +120,17 @@ export default function App() {
     });
   }
 
+  // NEW: Clear All Function
+  async function clearAllNotes() {
+    const count = notes.length;
+    if (count === 0) return;
+
+    if (window.confirm(`Are you sure you want to delete ALL ${count} notes across all websites?\n\nThis action cannot be undone.`)) {
+        setNotes([]); // Optimistic clear
+        chrome.storage.local.set({ notes: [] });
+    }
+  }
+
   function openNoteInPage(note) {
     chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
       if (!tabs || tabs.length === 0) return;
@@ -125,6 +139,7 @@ export default function App() {
       const activeNorm = getCanonicalUrl(activeTab.url || "");
       const noteNorm = note.normalizedUrl || getCanonicalUrl(note.url || "");
 
+      // same page
       if (activeNorm === noteNorm) {
         chrome.tabs.sendMessage(activeTab.id, {
           type: "OPEN_NOTE_VIEWER",
@@ -133,12 +148,14 @@ export default function App() {
         return;
       }
 
+      // open tab → wait → jump to highlight
       chrome.tabs.create({ url: note.url }, (newTab) => {
         if (!newTab?.id) return;
         
         const listener = (updatedTabId, changeInfo) => {
           if (updatedTabId === newTab.id && changeInfo.status === "complete") {
             chrome.tabs.onUpdated.removeListener(listener);
+            // Add a small delay to ensure content script is loaded
             setTimeout(() => {
                 chrome.tabs.sendMessage(newTab.id, {
                 type: "OPEN_NOTE_VIEWER",
@@ -147,6 +164,7 @@ export default function App() {
             }, 1000);
           }
         };
+
         chrome.tabs.onUpdated.addListener(listener);
         setTimeout(() => {
             try { chrome.tabs.onUpdated.removeListener(listener); } catch(e){}
@@ -155,7 +173,7 @@ export default function App() {
     });
   }
 
-  // --- 5. EXPORT LOGIC ---
+  // --- 5. EXPORT LOGIC (BONUS FEATURE) ---
 
   const handleExport = (format) => {
     const dataToExport = mode === 'page' ? filteredPage : filteredGlobal;
@@ -235,7 +253,16 @@ export default function App() {
       {/* Header */}
       <header className="flex items-center justify-between mb-4 border-b pb-3">
         <h1 className="text-base font-bold text-gray-800">ContextMemo</h1>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+            {/* ADDED: Clear All Button */}
+            <button 
+                onClick={clearAllNotes}
+                className="text-[10px] bg-red-50 text-red-600 hover:bg-red-100 px-2 py-1 rounded font-medium border border-red-100 mr-1"
+                title="Delete ALL notes"
+            >
+                Clear All
+            </button>
+            
             <button onClick={() => handleExport('json')} className="text-[10px] bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded text-gray-600 font-medium" title="Export JSON">JSON</button>
             <button onClick={() => handleExport('md')} className="text-[10px] bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded text-gray-600 font-medium" title="Export Markdown">MD</button>
         </div>
@@ -338,7 +365,7 @@ function NoteItem({ note, showUrl, onOpen, onDelete }) {
                 </div>
             )}
             {/* Snippet Preview */}
-            <div className="text-xs font-semibold text-gray-500 mb-1 border-l-2 border-yellow-400 pl-2 italic">
+            <div className="text-xs text-gray-500 mb-1 border-l-2 border-yellow-400 pl-2 italic">
                 "{note.snippet ? (note.snippet.length > 80 ? note.snippet.substring(0, 80) + "..." : note.snippet) : "..."}"
             </div>
             {/* Note Content */}
