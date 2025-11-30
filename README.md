@@ -4,16 +4,6 @@ ContextMemo is a powerful Chrome extension that allows users to highlight text o
 
 ---
 
-Got you. Here is **exactly what you want**:
-
-✔ **Watch video** → uses Google Drive link
-✔ **Download video** → uses your GitHub RAW link (direct download)
-✔ Clean Markdown
-✔ No embed issues
-✔ Works perfectly on GitHub
-
----
-
 ## 🎥 Demo Video
 
 ### ▶ Watch the Demo
