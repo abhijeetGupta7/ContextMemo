@@ -1,61 +1,40 @@
-```markdown
-# ContextMemo — Persistent Web Highlighter & Notes Extension
+````markdown
+# **ContextMemo — Persistent Web Highlighter & Notes Chrome Extension**
 
-ContextMemo is a Chrome extension that lets you highlight text on any webpage, attach notes, and automatically restore those highlights even after page reloads or navigation. 
-
----
-
-## 🎥 Demo Video
-
-> *Insert your demo link here once ready.*
+A powerful Chrome extension that allows users to highlight text on any webpage, attach notes, and automatically restore those highlights across reloads and navigation. Built for reliability, performance, and seamless user experience.
 
 ---
 
-# ✨ Features
-
-### 🖍 Highlight & Save Notes
-- Select text → save a note for that snippet  
-- A small dot appears next to each highlight  
-- Click any highlight/dot to edit or delete the note  
-
-### 📑 Popup Dashboard (React)
-- View notes for **This Page**  
-- View **All Notes** globally  
-- Search and filter notes  
-- Jump back to a highlight inside the page  
-
-### 🔄 Automatic Rehydration
-- Highlights reappear after page reload  
-- Works on fast-changing SPAs (React, Vue, Angular)  
-- Handles DOM mutations using a dense-text anchoring strategy  
-
-### 🧩 Shadow DOM UI
-- Note editor opens inside an isolated Shadow DOM  
-- Prevents CSS conflicts with any website  
-
-### 🛡 CSP-Friendly Styling
-- Highlight styles applied using `element.style.setProperty(..., "important")`  
-- Works even on strict websites (e.g., GitHub, Wikipedia)
-
-### 💾 Data Saved Locally
-- Uses `chrome.storage.local`  
-- Notes persist across sessions  
-- Popup syncs instantly whenever notes update  
-
-### 📤 Export Options
-- Export notes as **JSON**  
-- Export grouped, formatted **Markdown**  
+## **Table of Contents**
+1. [About the Project](#about-the-project)
+2. [Tech Stack](#tech-stack)
+3. [Features](#features)
+4. [Extension Architecture](#extension-architecture)
+5. [Getting Started](#getting-started)
+6. [Folder Structure](#folder-structure)
 
 ---
 
-# 🧱 Tech Stack
+## **About the Project**
+ContextMemo is designed to let users highlight text across the web and store notes that persist permanently. It focuses on:
+
+- **Persistence**: Highlights reappear even after page reloads.
+- **Accuracy**: Uses dense-text anchoring to survive DOM changes.
+- **Performance**: Efficient scanning and shadow DOM UI for speed.
+- **Stability**: Works reliably on dynamic SPA websites.
+- **Privacy**: All data is stored locally on the user's machine.
+
+---
+
+## **Tech Stack**
 
 ### **Extension Core**
-- JavaScript  
+- JavaScript (ESNext)
+- Chrome Extensions Manifest V3  
 - DOM Range API  
 - TreeWalker API  
 - Shadow DOM  
-- Chrome Manifest V3  
+- `chrome.storage.local`
 
 ### **Popup UI**
 - React 18  
@@ -64,79 +43,150 @@ ContextMemo is a Chrome extension that lets you highlight text on any webpage, a
 
 ---
 
-# 🛠 Installation (Chrome Developer Mode)
+## **Features**
+1. **Highlight & Annotate**
+   - Select text and save notes bound to that highlight.
+   - Small clickable indicator dot next to each highlight.
+   - Edit or delete notes in-place.
 
-1. Clone the repo:
+2. **Automatic Highlight Restoration**
+   - Highlights rehydrate after reloads.
+   - Works even when DOM structure changes.
+   - Uses dense-text indexing for stability.
 
-```bash
-git clone https://github.com/YOUR_USERNAME/contextmemo.git
-cd contextmemo
+3. **Popup Notes Dashboard**
+   - View notes for *This Page*.
+   - Browse *All Notes* from any website.
+   - Search, filter, and jump to highlights.
+
+4. **Shadow DOM Note Editor**
+   - Completely isolated from website styles.
+   - Guaranteed UI consistency.
+
+5. **CSP-Friendly Styling**
+   - Uses inline `style.setProperty(..., "important")`.
+   - Works even on strict CSP sites like GitHub, Wikipedia.
+
+6. **Local Storage Persistence**
+   - Fully offline.
+   - Never sends data to any server.
+
+7. **Export Options**
+   - Export all notes as JSON.
+   - Export formatted Markdown.
+
+---
+
+## **Extension Architecture**
+
+### **1. Content Script**
+- Listens to text selections.
+- Serializes DOM Range.
+- Generates locator metadata:
+  - `denseText`
+  - `globalStart` / `globalEnd`
+  - snippet
+- Injects highlight `<span>` elements.
+- Rehydrates highlights on page load.
+- Handles note editor UI via Shadow DOM.
+
+### **2. Background Script**
+- Coordinates messages between popup and content scripts.
+- Manages extension lifecycle events.
+
+### **3. Popup (React App)**
+- Lists all notes.
+- Filters by URL, search, date.
+- Allows deletion and navigation to specific notes.
+- Syncs live with `chrome.storage.local`.
+
+---
+
+## **Getting Started**
+
+### **Prerequisites**
+- Node.js 18+
+- Chrome browser
+
+### **Installation**
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/contextmemo.git
+   cd contextmemo
 ````
 
 2. Install dependencies:
 
-```bash
-npm install
-```
+   ```bash
+   npm install
+   ```
 
-3. Build the popup UI:
+3. Build the extension:
 
-```bash
-npm run build
-```
+   ```bash
+   npm run build
+   ```
 
-4. Load Extension:
+4. Load into Chrome:
 
-* Open Chrome → `chrome://extensions`
-* Enable **Developer mode**
-* Click **Load Unpacked** 
-* Select the project folder containing `manifest.json` (dist)
-
----
-
-# 📌 How Anchoring Works (Explained Simply)
-
-When you highlight text, ContextMemo records:
-
-* the raw snippet
-* a whitespace-compressed version (`denseText`)
-* the dense start index (`globalStart`)
-* the dense end index (`globalEnd`)
-
-### Example
-
-```
-Snippet: "inactive "
-Dense Text: "inactive"
-Dense Offset Range: 1176 → 1184
-```
-
-Later, when the page reloads:
-
-1. The extension scans *all* visible text on the page
-2. Compresses it again into a dense string
-3. Locates the same substring using saved offsets
-4. Reconstructs the original DOM Range
-5. Applies highlight spans back into the page
-
-This allows highlights to persist even if:
-
-* whitespace changes
-* the page structure changes
-* the website re-renders using React/Angular
-
-This anchoring method is stable because the **text content** rarely changes, even when the DOM does.
+   * Go to `chrome://extensions`
+   * Enable **Developer Mode**
+   * Click **Load Unpacked**
+   * Select the project root folder (the one containing `manifest.json`)
 
 ---
 
-# 🛠 How Data Is Stored in chrome.storage
+## **Folder Structure**
 
-Each note is stored as a structured object:
+```markdown
+contextmemo/
+│
+├── manifest.json
+├── background.js
+├── content.js
+│
+├── src/
+│   ├── App.jsx
+│   ├── main.jsx
+│   ├── index.css
+│   ├── assets/
+│
+├── dist/
+├── package.json
+└── README.md
+```
+
+---
+
+## **How Anchoring Works**
+
+ContextMemo converts webpage text into a dense form (removing extra whitespace) and stores:
+
+* denseText (exact matched sequence)
+* globalStart / globalEnd (indexes in the dense document)
+* snippet (small preview)
+
+During page reload:
+
+1. Page text → re-densified
+2. Offsets → used to relocate snippet
+3. DOM Range reconstructed
+4. Highlight applied again
+
+This survives:
+
+* whitespace shifts
+* layout changes
+* SPA re-renders
+
+---
+
+## **Data Format (chrome.storage.local)**
 
 ```json
 [
   {
-    "content": "xssx",
+    "content": "My note",
     "createdAt": 1764502036205,
     "id": "n_3l0udmjp6r8",
     "locator": {
@@ -145,83 +195,40 @@ Each note is stored as a structured object:
       "globalStart": 367,
       "snippet": "equals "
     },
-    "normalizedUrl": "www.geeksforgeeks.org/problems/subarray-with-given-sum-1587115621/1",
+    "normalizedUrl": "www.example.com/page",
     "snippet": "equals ",
-    "url": "https://www.geeksforgeeks.org/problems/subarray-with-given-sum-1587115621/1?page=1&sortBy=submissions"
+    "url": "https://www.example.com/page?query=1"
   }
 ]
 ```
 
-### Why these fields exist
-
-| Field           | Purpose                                        |
-| --------------- | ---------------------------------------------- |
-| `id`            | Unique per note                                |
-| `url`           | Real page URL                                  |
-| `normalizedUrl` | Used for grouping & filtering                  |
-| `snippet`       | Preview of highlighted text                    |
-| `locator`       | Used to restore highlights via dense anchoring |
-| `content`       | User’s note text                               |
-| `createdAt`     | Display & sorting                              |
-
-The popup UI filters and displays notes using this structured data.
-
 ---
 
-# 🧩 Architecture Overview
-
-```
-[Text Selection]
-      |
-      v
-Content Script
-  - serialize selection
-  - save locator + snippet
-  - wrap DOM with spans
-      |
-      v
-chrome.storage.local
-      |
-      v
-Popup Dashboard (React)
-  - lists, searches, filters, removes notes
-      |
-      v
-Content Script
-  - rehydrates highlights
-  - jumps to specific notes
-```
-
----
-
-# 🚀 Future Improvements
+## **Future Improvements**
 
 * Multiple highlight colors
 * Cloud sync (Supabase / Firebase)
-* Account-based syncing
-* PDF highlighting support
-* Import/export archives
 * Password-protected notes
-* Option to disable dots
+* PDF support
+* Keyboard shortcuts
 
 ---
 
-# 🤝 Contributing
+## **Contributing**
 
-Pull requests and suggestions are welcome.
-You can help improve:
+Pull requests and feature suggestions are welcome!
+Focus areas:
 
-* Highlight detection
-* Anchoring algorithm edge cases
-* Popup UI/UX
-* Export formats
+* Anchoring improvements
+* Popup UI/UX refinements
+* Export enhancements
 
 ---
 
-# 🙌 Final Notes
+## **Final Notes**
 
-ContextMemo focuses on reliability across all websites while keeping the experience simple:
-highlight, write, save, and revisit your thoughts anytime.
+ContextMemo is designed for reliability across all websites while staying simple and intuitive:
+**highlight → write → save → revisit anytime.**
 
 ```
 ```
