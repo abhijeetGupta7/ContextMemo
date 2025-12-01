@@ -83,8 +83,8 @@ ContextMemo is a powerful Chrome extension that allows users to highlight text o
 1. **Clone the repository:**
 
    ```bash
-   git clone https://github.com/YOUR_USERNAME/contextmemo.git
-   cd contextmemo
+   git clone https://github.com/abhijeetGupta7/ContextMemo.git
+   cd ContextMemo
    ```
 
 2. **Install dependencies:**
